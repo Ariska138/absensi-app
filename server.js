@@ -1,7 +1,12 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
+import { auth } from './api/auth';
+import admin from './api/admin';
 
 const app = new Hono();
+
+app.route('/auth', auth);
+app.route('/admin', admin);
 
 // endpoint utama
 app.get('/', (c) => {
