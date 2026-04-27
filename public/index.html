@@ -1,0 +1,40 @@
+<h2>Absensi</h2>
+
+<input id="identifier" placeholder="ID atau Email" /><br /><br />
+
+<button onclick="checkIn()">Check In</button>
+<button onclick="checkOut()">Check Out</button>
+
+<p id="result"></p>
+
+<script>
+  async function checkIn() {
+    const identifier = document.getElementById("identifier").value;
+
+    const res = await fetch("/user/check-in", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ identifier })
+    });
+
+    const data = await res.json();
+    document.getElementById("result").innerText = data.message;
+  }
+
+  async function checkOut() {
+    const identifier = document.getElementById("identifier").value;
+
+    const res = await fetch("/user/check-out", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ identifier })
+    });
+
+    const data = await res.json();
+    document.getElementById("result").innerText = data.message;
+  }
+</script>

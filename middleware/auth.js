@@ -1,20 +1,21 @@
+import { getCookie } from 'hono/cookie';
 import { sessions } from '../api/auth.js';
 
 export const authMiddleware = async (c, next) => {
-  const token = c.req.header('Authorization');
+  const session = getCookie(c, 'session');
 
-  if (!token) {
+  if (!session) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 
-  const user = sessions.get(token);
+  try {
+    const user = JSON.parse(session);
 
-  if (!user) {
-    return c.json({ message: 'Invalid token' }, 401);
+    // inject ke context
+    c.set('user', user);
+
+    await next();
+  } catch (err) {
+    return c.json({ message: 'Invalid session' }, 401);
   }
-
-  // simpan user ke context
-  c.set('user', user);
-
-  await next();
 };

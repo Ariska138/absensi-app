@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Dashboard</title>
+</head>
+
+<body>
+
+  <h2>Dashboard Admin</h2>
+
+  <button onclick="loadUsers()">Load Users</button>
+  <button onclick="logout()">Logout</button>
+
+  <ul id="users"></ul>
+
+  <script>
+    const token = localStorage.getItem("token");
+
+    async function loadUsers() {
+      const res = await fetch("/admin/users", {
+        headers: {
+          "Authorization": token
+        }
+      });
+
+      const data = await res.json();
+
+      const list = document.getElementById("users");
+      list.innerHTML = "";
+
+      if (data.data) {
+        data.data.forEach(user => {
+          const li = document.createElement("li");
+          li.innerText = user.name + " (" + user.email + ")";
+          list.appendChild(li);
+        });
+      }
+    }
+
+    async function logout() {
+      await fetch("/auth/logout", {
+        method: "POST",
+        headers: {
+          "Authorization": token
+        }
+      });
+
+      localStorage.removeItem("token");
+      window.location.href = "/login.html";
+    }
+  </script>
+
+</body>
+
+</html>
