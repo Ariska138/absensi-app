@@ -3,86 +3,85 @@ import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { createToken, verifyToken } from '../lib/jwt.js';
 
 const auth = new Hono();
 
-// simpan session
-const sessions = new Map();
-
+// ========================
+// LOGIN
+// ========================
 auth.post('/login', async (c) => {
   const body = await c.req.json();
   const { email, password } = body;
 
-  // ambil user dari database
-  const result = await db.select().from(users).where(eq(users.email, email));
+  if (!email || !password) {
+    return c.json({ message: 'Email dan password wajib diisi' }, 400);
+  }
 
+  // Ambil user dari database
+  const result = await db.select().from(users).where(eq(users.email, email));
   const user = result[0];
 
-  // cek user
+  // Pesan error digabung agar tidak membocorkan info
   if (!user) {
-    return c.json({ message: 'User tidak ditemukan' }, 401);
+    return c.json({ message: 'Email atau password salah' }, 401);
   }
 
-  // cek password
+  if (!user.is_active) {
+    return c.json({ message: 'Akun tidak aktif' }, 403);
+  }
+
   const isMatch = await bcrypt.compare(password, user.password);
-
   if (!isMatch) {
-    return c.json({ message: 'Password salah' }, 401);
+    return c.json({ message: 'Email atau password salah' }, 401);
   }
 
-  // buat token
-  const token = uuidv4();
-
-  // simpan session
-  // sessions.set(token, user);
-
-  setCookie(
-    c,
-    'session',
-    JSON.stringify({
-      id: user.id,
-      role: user.role,
-    }),
-    {
-      httpOnly: true,
-      path: '/',
-      maxAge: 60 * 60 * 24, // 1 hari
-    },
-  );
-
-  return c.json({
-    message: 'Login berhasil',
-    token,
+  // Buat JWT — payload berisi data minimal, JANGAN simpan password
+  const token = await createToken({
+    id: user.id,
+    name: user.name,
+    role: user.role,
   });
+
+  // Kirim token via httpOnly cookie (tidak bisa dibaca JS di browser)
+  setCookie(c, 'session_token', token, {
+    httpOnly: true,
+    maxAge: 60 * 60 * 24, // 1 hari
+    sameSite: 'Lax',
+    // secure: true, // aktifkan di production (HTTPS)
+  });
+
+  return c.json({ message: 'Login berhasil', role: user.role });
 });
 
+// ========================
+// LOGOUT
+// ========================
 auth.post('/logout', async (c) => {
-  const token = c.req.header('Authorization');
-
-  // sessions.delete(token);
-  deleteCookie(c, 'session');
-
-  return c.json({
-    message: 'Logout berhasil',
-  });
+  // JWT stateless — cukup hapus cookie dari browser
+  deleteCookie(c, 'session_token', { path: '/' });
+  return c.json({ message: 'Logout berhasil' });
 });
 
+// ========================
+// CEK SESSION
+// ========================
 auth.get('/me', async (c) => {
-  // const token = c.req.header('Authorization');
+  const token = getCookie(c, 'session_token');
 
-  // const user = sessions.get(token);
-
-  const session = getCookie(c, 'session');
-
-  if (!session) {
+  if (!token) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 
-  return c.json({
-    user: JSON.parse(session),
-  });
+  try {
+    const user = await verifyToken(token);
+    return c.json({ user: { id: user.id, name: user.name, role: user.role } });
+  } catch (err) {
+    // Tambahkan console.log ini untuk melihat penyebab error sebenarnya di terminal
+    console.error('JWT Verification Error:', err.message);
+    return c.json({ message: 'Session tidak valid atau sudah expired' }, 401);
+  }
 });
 
-export { auth, sessions };
+export { auth };

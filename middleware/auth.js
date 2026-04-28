@@ -1,21 +1,24 @@
 import { getCookie } from 'hono/cookie';
-import { sessions } from '../api/auth.js';
+import { verifyToken } from '../lib/jwt.js';
 
 export const authMiddleware = async (c, next) => {
-  const session = getCookie(c, 'session');
+  const token = getCookie(c, 'session_token');
 
-  if (!session) {
+  if (!token) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 
   try {
-    const user = JSON.parse(session);
+    // Verifikasi signature dan expiry JWT — dilempar error jika tidak valid
+    const user = await verifyToken(token);
 
-    // inject ke context
-    c.set('user', user);
+    // Inject data user ke context request
+    c.set('user', { id: user.id, name: user.name, role: user.role });
 
     await next();
   } catch (err) {
-    return c.json({ message: 'Invalid session' }, 401);
+    // Tambahkan console.log ini untuk melihat penyebab error sebenarnya di terminal
+    console.error('JWT Verification Error:', err.message);
+    return c.json({ message: 'Session tidak valid atau sudah expired' }, 401);
   }
 };

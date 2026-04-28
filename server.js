@@ -8,8 +8,6 @@ import { user } from './api/user.js';
 
 const app = new Hono();
 
-app.use('/*', serveStatic({ root: './public' }));
-
 app.route('/auth', auth);
 app.route('/admin', admin);
 app.route('/user', user);
@@ -18,6 +16,8 @@ app.route('/user', user);
 app.get('/', (c) => {
   return c.text('Hello World');
 });
+
+app.use('/*', serveStatic({ root: './public' }));
 
 // jalankan server
 serve(

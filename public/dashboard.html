@@ -1,53 +1,194 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 
 <head>
-  <title>Dashboard</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Admin</title>
 </head>
 
 <body>
 
   <h2>Dashboard Admin</h2>
-
-  <button onclick="loadUsers()">Load Users</button>
+  <p>Login sebagai: <strong id="adminLabel">—</strong></p>
   <button onclick="logout()">Logout</button>
 
-  <ul id="users"></ul>
+  <hr>
+
+  <h3>Tambah User Baru</h3>
+  <form onsubmit="tambahUser(event)">
+    <div>
+      <label>Nama: <input type="text" id="fieldName" required /></label>
+    </div>
+    <div>
+      <label>Email: <input type="email" id="fieldEmail" required /></label>
+    </div>
+    <div>
+      <label>Password: <input type="password" id="fieldPassword" required minlength="6" /></label>
+    </div>
+    <div>
+      <label>Role:
+        <select id="fieldRole">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+    </div>
+    <br>
+    <button type="submit">Tambah User</button>
+  </form>
+  <p id="formResult"></p>
+
+  <hr>
+
+  <h3>Daftar User</h3>
+  <table border="1" cellpadding="6">
+    <thead>
+      <tr>
+        <th>Nama</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="userTableBody">
+      <tr>
+        <td colspan="4">Memuat...</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <h3>Rekap Absensi</h3>
+  <label>
+    Bulan:
+    <input type="month" id="filterMonth" />
+  </label>
+  <button onclick="loadAbsensi()">Tampilkan</button>
+  <p id="absensiResult"></p>
+
+  <table border="1" cellpadding="6">
+    <thead>
+      <tr>
+        <th>Nama</th>
+        <th>Email</th>
+        <th>Check In</th>
+        <th>Check Out</th>
+        <th>Catatan</th>
+      </tr>
+    </thead>
+    <tbody id="absensiTableBody">
+      <tr>
+        <td colspan="5">Pilih bulan lalu klik Tampilkan.</td>
+      </tr>
+    </tbody>
+  </table>
 
   <script>
-    const token = localStorage.getItem("token");
+    // Set default filter bulan ke bulan ini
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    document.getElementById('filterMonth').value = `${yyyy}-${mm}`;
+
+    // Cek session & tampilkan nama admin
+    (async () => {
+      const res = await fetch('/auth/me', { credentials: "include" });
+      if (!res.ok) { window.location.href = '/login.html'; return; }
+      const { user } = await res.json();
+      document.getElementById('adminLabel').textContent = user.name;
+      await loadUsers();
+      await loadAbsensi();
+    })();
 
     async function loadUsers() {
-      const res = await fetch("/admin/users", {
-        headers: {
-          "Authorization": token
-        }
+      const res = await fetch('/admin/users', { credentials: "include" });
+      if (res.status === 401 || res.status === 403) { window.location.href = '/login.html'; return; }
+      const { data } = await res.json();
+      const tbody = document.getElementById('userTableBody');
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4">Belum ada user.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.map(u => `
+        <tr>
+          <td>${u.name}</td>
+          <td>${u.email}</td>
+          <td>${u.role}</td>
+          <td>${u.is_active ? 'Aktif' : 'Nonaktif'}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function tambahUser(e) {
+      e.preventDefault();
+      const body = {
+        name: document.getElementById('fieldName').value.trim(),
+        email: document.getElementById('fieldEmail').value.trim(),
+        password: document.getElementById('fieldPassword').value,
+        role: document.getElementById('fieldRole').value,
+      };
+
+      const res = await fetch('/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: "include"
       });
-
       const data = await res.json();
+      document.getElementById('formResult').textContent = data.message;
 
-      const list = document.getElementById("users");
-      list.innerHTML = "";
-
-      if (data.data) {
-        data.data.forEach(user => {
-          const li = document.createElement("li");
-          li.innerText = user.name + " (" + user.email + ")";
-          list.appendChild(li);
-        });
+      if (res.ok) {
+        e.target.reset();
+        await loadUsers();
       }
     }
 
-    async function logout() {
-      await fetch("/auth/logout", {
-        method: "POST",
-        headers: {
-          "Authorization": token
-        }
-      });
+    async function loadAbsensi() {
+      const month = document.getElementById('filterMonth').value;
+      if (!month) {
+        document.getElementById('absensiResult').textContent = 'Pilih bulan terlebih dahulu.';
+        return;
+      }
 
-      localStorage.removeItem("token");
-      window.location.href = "/login.html";
+      const res = await fetch(`/admin/attendances?month=${month}`, { credentials: "include" });
+      const data = await res.json();
+      const tbody = document.getElementById('absensiTableBody');
+      document.getElementById('absensiResult').textContent = '';
+
+      if (!res.ok) {
+        document.getElementById('absensiResult').textContent = data.message;
+        tbody.innerHTML = '<tr><td colspan="5">—</td></tr>';
+        return;
+      }
+
+      if (!data.data || data.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">Tidak ada data absensi pada bulan ini.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.data.map(a => `
+        <tr>
+          <td>${a.user_name ?? '—'}</td>
+          <td>${a.user_email ?? '—'}</td>
+          <td>${formatTanggal(a.check_in)}</td>
+          <td>${a.check_out ? formatTanggal(a.check_out) : '—'}</td>
+          <td>${a.note ?? '—'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function formatTanggal(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+        + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function logout() {
+      await fetch('/auth/logout', { method: 'POST', credentials: "include" });
+      window.location.href = '/login.html';
     }
   </script>
 
